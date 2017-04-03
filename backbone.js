@@ -33,6 +33,7 @@
   }
 
 })(function(root, Backbone, _, $) {
+  'use strict';
 
   // Initial Setup
   // -------------
