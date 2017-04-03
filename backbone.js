@@ -103,6 +103,23 @@
     };
   };
 
+  var isEqual = function(a, b) {
+    // Custom types (e.g., `new MyFunction()`) must be `===`.
+    if (
+      (
+        Object.prototype.toString.apply(a) === "[object Object]" &&
+          Object.getPrototypeOf(a) !== Object
+      ) || (
+        Object.prototype.toString.apply(b) === "[object Object]" &&
+          Object.getPrototypeOf(b) !== Object
+      )
+    ) {
+      return a === b;
+    } else {
+      return _.isEqual(a, b);
+    }
+  };
+
   // Backbone.Events
   // ---------------
 
@@ -381,6 +398,7 @@
   var Model = Backbone.Model = function(attributes, options) {
     var attrs = attributes || {};
     options || (options = {});
+    this._eventProxies = {};
     this.preinitialize.apply(this, arguments);
     this.cid = _.uniqueId(this.cidPrefix);
     this.attributes = {};
@@ -390,6 +408,15 @@
     this.changed = {};
     this.initialize.apply(this, arguments);
   };
+
+  function eventProxy(name) {
+    var prefix = "member:" + name + ":";
+    return function (event) {
+      arguments[0] = prefix + event;
+      this.trigger.apply(this, arguments);
+    };
+  }
+
 
   // Attach all inheritable methods to the Model prototype.
   _.extend(Model.prototype, Events, {
@@ -477,17 +504,33 @@
       var current = this.attributes;
       var changed = this.changed;
       var prev    = this._previousAttributes;
+      var proxy;
 
       // For each `set` attribute, update or delete the current value.
       for (var attr in attrs) {
         val = attrs[attr];
-        if (!_.isEqual(current[attr], val)) changes.push(attr);
-        if (!_.isEqual(prev[attr], val)) {
+        if (!isEqual(current[attr], val)) changes.push(attr);
+        if (!isEqual(prev[attr], val)) {
           changed[attr] = val;
         } else {
           delete changed[attr];
         }
-        unset ? delete current[attr] : current[attr] = val;
+
+        proxy = this._eventProxies[attr];
+        if (proxy && current[attr] instanceof Events) {
+          this.stopListening(current[attr], "all", proxy);
+        }
+        if (!unset && val instanceof Events) {
+          if (!proxy) {
+            proxy = this._eventProxies[attr] = eventProxy(attr);
+          }
+          this.listenTo(val, "all", proxy);
+        }
+        if (unset) {
+          delete current[attr];
+        } else {
+          current[attr] = val;
+        }
       }
 
       // Update the `id`.
@@ -549,7 +592,7 @@
       var hasChanged;
       for (var attr in diff) {
         var val = diff[attr];
-        if (_.isEqual(old[attr], val)) continue;
+        if (isEqual(old[attr], val)) continue;
         changed[attr] = val;
         hasChanged = true;
       }
@@ -624,6 +667,7 @@
   var Collection = Backbone.Collection = function(models, options) {
     options || (options = {});
     this.preinitialize.apply(this, arguments);
+    this.cid = _.uniqueId(this.cidPrefix);
     if (options.model) this.model = options.model;
     if (options.comparator !== void 0) this.comparator = options.comparator;
     this._reset();
@@ -652,6 +696,11 @@
     // The default model for a collection is just a **Backbone.Model**.
     // This should be overridden in most cases.
     model: Model,
+
+    // The prefix is used to create the client id which is used to identify models locally.
+    // You may want to override this if you're experiencing name clashes with model ids.
+    // TODO: remove IDs?
+    cidPrefix: 'c',
 
 
     // preinitialize is an empty function by default. You can override it with a function
@@ -789,7 +838,7 @@
         for (i = 0; i < toAdd.length; i++) {
           if (at != null) options.index = at + i;
           model = toAdd[i];
-          model.trigger('add', model, this, options);
+          this.trigger('add', this, model);
         }
         if (sort || orderChanged) this.trigger('sort', this, options);
         if (toAdd.length || toRemove.length || toMerge.length) {
@@ -984,7 +1033,7 @@
 
         if (!options.silent) {
           options.index = index;
-          model.trigger('remove', model, this, options);
+          this.trigger('remove', this, model, options);
         }
 
         removed.push(model);
@@ -1019,9 +1068,8 @@
     // Sets need to update their indexes when models change ids. All other
     // events simply proxy through. "add" and "remove" events that originate
     // in other collections are ignored.
-    _onModelEvent: function(event, model, collection, options) {
+    _onModelEvent: function(event, model, options) {
       if (model) {
-        if ((event === 'add' || event === 'remove') && collection !== this) return;
         if (event === 'destroy') this.remove(model, options);
         if (event === 'change') {
           var prevId = this.modelId(model.previousAttributes());
@@ -1032,6 +1080,7 @@
           }
         }
       }
+      arguments[0] = 'item:' + event;
       this.trigger.apply(this, arguments);
     }
 
