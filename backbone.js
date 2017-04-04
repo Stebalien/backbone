@@ -398,15 +398,15 @@
   var Model = Backbone.Model = function(attributes, options) {
     var attrs = attributes || {};
     options || (options = {});
+    this.preinitialize(null, options);
     this._eventProxies = {};
-    this.preinitialize.apply(this, arguments);
     this.cid = _.uniqueId(this.cidPrefix);
     this.attributes = {};
     var defaults = _.result(this, 'defaults');
     attrs = _.defaults(_.extend({}, defaults, attrs), defaults);
     this.set(attrs, options);
     this.changed = {};
-    this.initialize.apply(this, arguments);
+    this.initialize(attributes, options);
   };
 
   function eventProxy(name) {
