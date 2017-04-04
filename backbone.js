@@ -671,7 +671,7 @@
     if (options.model) this.model = options.model;
     if (options.comparator !== void 0) this.comparator = options.comparator;
     this._reset();
-    if (models) this.reset(models, _.extend({silent: true}, options));
+    if (models) this.reset(models, options);
     this.initialize.apply(this, arguments);
   };
 
@@ -972,6 +972,16 @@
         model: this.model,
         comparator: this.comparator
       });
+    },
+
+    // Destroy this collection.
+    // This does *not* destroy children.
+    destroy: function(options) {
+      this.trigger('destroy', this, options);
+      this.reset(null, {silent: true});
+      this.stopListening();
+      // Sabatoge
+      this.models = null;
     },
 
     // Define how to uniquely identify models in the collection.
